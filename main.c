@@ -3,6 +3,7 @@
 #include <X11/Xlib.h> // cc -l X11
 // #include <X11/Xutil.h>
 #include <unistd.h>
+#include <stdbool.h>
 
 #define BORDER 3
 #define WIDTH  1000
@@ -25,9 +26,9 @@
 #define PI 3.1415926535
 
 #define g 9.80665
-#define e 0.93
+#define e 0.92
 
-#define t 0.2
+#define t 0.1
 
 #define MAX 5
 #define WALL_MAX 10
@@ -137,8 +138,51 @@ void DrawBall(Display *dpy, const Window w, GC gc, Ball *ball) {
 }
 
 void DrawBalls(Display *dpy, const Window w, GC gc) {
-	for(int i = 0; i < MAX; ++i) {
+	for(int i = 0; i < MAX; ++i)
 		DrawBall(dpy, w, gc, placed_balls+i);
+}
+
+float dot(const Vector a, const Vector b) {
+	return a.x*b.x + a.y+b.y;
+}
+
+void reflect(Ball *ball) {
+	for(int i = 0;i < WALL_MAX; ++i) {
+		Wall w = placed_walls[i];
+		if(w.pos1.x == -1) continue;
+		// if (w.pos1.x > w.pos2.x) {
+		// 	const Vector a = w.pos2;
+		// 	w.pos2 = w.pos1;
+		// 	w.pos1 = a;
+		// }
+		// const Vector vec = (Vector) {w.pos2.x - w.pos1.x, w.pos2.y - w.pos1.y};
+
+		const float a = (w.pos2.y - w.pos1.y) / (w.pos2.x - w.pos1.x);
+		const float b = w.pos1.y - a*w.pos1.x;
+		const float d = (float) (fabsf(a*ball->center.x - ball->center.y + b) / sqrt(pow(a, 2) + pow(b, 2)));
+		// const float d = (float)(fabsf(vec.y * ball->center.x - vec.x * ball->center.y + w.pos2.x * w.pos1.y - w.pos1.x * w.pos2.y)/(sqrt(pow(vec.x, 2) + pow(vec.y, 2))));
+		printf("%4.2f, %4.2f, %4.2f\n", a, b, d);
+		if(d <= ball->r) {
+			float y[2];
+			if(w.pos1.y > w.pos2.y) {
+				y[0] = w.pos1.y;
+				y[1] = w.pos2.y;
+			} else {
+				y[0] = w.pos2.y;
+				y[1] = w.pos1.y;
+			}
+
+			if(ball->center.y + ball->r/2 >= y[0] && ball->center.y - ball->r/2 < y[1]) {
+				ball->center.y = y[0] - ball->r/2;
+				ball->v.y *= (float) -e;
+			}
+
+			// if(ball->center.y + ball->r/2 < y[0] && ball->center.y - ball->r/2 >= y[1]) {
+			// 	ball->center.y = y[1] + ball->r/2;
+			// 	ball->v.y *= (float) -e;
+			// }
+
+		}
 	}
 }
 
@@ -149,7 +193,7 @@ int main(int argc, char **argv) {
 	}
 
 	for (int i = 0; i < WALL_MAX; i++) {
-		placed_walls[i] = (Wall) {(Vector) {0, 0}, (Vector) {0, 0}};
+		placed_walls[i] = (Wall) {(Vector) {-1, -1}, (Vector) {-1, -1}};
 	}
 
 	Display *dpy = XOpenDisplay("");
@@ -186,7 +230,7 @@ int main(int argc, char **argv) {
 
 	addWall((Vector) {0, 0}, (Vector) {WIDTH, 0});			// 上
 	addWall((Vector) {0, 0}, (Vector) {0, HEIGHT});			// 左
-	addWall((Vector) {WIDTH, 0}, (Vector) {0, HEIGHT});     // 右
+	addWall((Vector) {WIDTH, 0}, (Vector) {WIDTH, HEIGHT});     // 右
 	addWall((Vector) {0, HEIGHT}, (Vector) {WIDTH, HEIGHT});// 下
 
 	while(1){
@@ -234,7 +278,7 @@ int main(int argc, char **argv) {
 						rotate_point(&end, start, PI);
 						placed_balls[last].v.x = (end.x - start.x) / placed_balls[last].mass;
 						placed_balls[last].v.y = (end.y - start.y) / placed_balls[last].mass;
-						placed_balls[last].r_speed = placed_balls[last].v.x / 100; // RANDOM 100
+						placed_balls[last].r_speed = placed_balls[last].v.x / 80; // RANDOM 100
 						placed_balls[last].a.y = g;
 						mouse.x = -1;
 					}
@@ -244,7 +288,7 @@ int main(int argc, char **argv) {
 			}
 		} else {
 
-			usleep(20000);
+			usleep(5000);
 			XClearWindow(dpy, w);
 
 			for(int i = 0; i < MAX; ++i) {
@@ -260,6 +304,10 @@ int main(int argc, char **argv) {
 				ball->center.y += ball->v.y * (float)t;
 				ball->rad -= ball->r_speed * (float)t;
 
+				reflect(ball);
+				// if((*ball)) {
+				// 	printf("called\n");
+				// }
 				// if(ball->center.x - ball->r/2 < 0 && ball->v.x < 0) { // 左端
 				// 	ball->v.x *= (float) -e;
 				// 	ball->r_speed *= (float) -e;
