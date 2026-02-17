@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include <stdbool.h>
 
-#define BORDER 3
+#define BORDER 0
 #define WIDTH  1000
 #define HEIGHT 700
 
@@ -43,6 +43,8 @@ typedef struct {
 typedef struct {
 	Vector pos1;
 	Vector pos2;
+	float a;
+	float c; // ax - y + c = 0
 } Wall;
 
 typedef struct {
@@ -77,7 +79,14 @@ Ball* addBall(const Vector center, const Vector v, const Vector a, const float r
 }
 
 Wall* addWall(const Vector pos1, const Vector pos2) {
-	const Wall wall = {pos1, pos2};
+	const float dx = pos2.x - pos1.x;
+	const float dy = pos2.y - pos1.y;
+	float a = 0; // x = c
+	if ((int) dx != 0) {
+		a = dy / dx;// y = ax+c
+	} // ax - y + c = 0
+	const float c = pos1.y - a*pos1.x;
+	const Wall wall = {pos1, pos2, a, c};
 	if (++wall_last >= WALL_MAX) wall_last = 0;
 	placed_walls[wall_last] = wall;
 	return placed_walls + wall_last;
@@ -129,15 +138,15 @@ void DrawBall(Display *dpy, const Window w, GC gc, Ball *ball) {
 	XSetForeground(dpy, gc, white);// 中心内側円
 	XFillArc(dpy, w, gc, (int) (pos.x+(ball->r* 5/12)), (int) (pos.y+(ball->r* 5/12)), (int) ((ball->r/5)-(ball->r/30)), (int) ((ball->r/5)-(ball->r/30)), 0, 360*64);
 
-	XSetForeground(dpy, gc, black);// 外接正角形
-	XDrawRectangle(dpy, w, gc, (int) pos.x, (int) pos.y, (int) ball->r, (int) ball->r);
+	// XSetForeground(dpy, gc, black);// 外接正角形
+	// XDrawRectangle(dpy, w, gc, (int) pos.x, (int) pos.y, (int) ball->r, (int) ball->r);
 	// XDrawLine(dpy, w, gc, pos.x+(ball->r/2), pos.y, pos.x+(ball->r/2), pos.y+ball->r);
 
 	if(ball->rad > 2*PI) ball->rad -= (float) (2*PI);
 
 }
 
-void DrawWall(Display *dpy, const Window w, GC gc, Wall *wall) {
+void DrawWall(Display *dpy, const Window w, GC gc, const Wall *wall) {
 	if(wall->pos1.x == -1) return;
 	XSetForeground(dpy, gc, black);
 	XDrawLine(dpy, w, gc, (int) wall->pos1.x, (int) wall->pos1.y, (int) wall->pos2.x, (int) wall->pos2.y);
@@ -163,60 +172,55 @@ void reflect(const Ball before, Ball *after) {
 		if(w.pos1.x == -1) continue;
 		const float dx = w.pos2.x - w.pos1.x;
 		const float dy = w.pos2.y - w.pos1.y;
-		float a = 0; // x = c
-		if ((int) dx != 0) {
-			a = dy / dx;// y = ax+c
-		} // ax - y + c = 0
-		// const float c = w.pos1.y - a*w.pos1.x;
-		const float under = sqrtf(powf(a, 2) + 1);
+		const float under = sqrtf(powf(w.a, 2) + 1);
 		const float k = under*after->r/2;
+		const float y = w.a*after->center.x + w.c;
+		float x = 0;
+		if (w.a != 0) {
+			x = (after->center.y - w.c) / w.a;
+		}
+		float is = 1;
+		if(y > before.center.y) is = -1;
 		/*
-		 * todo: 法線ベクトルの向きの考慮
 		 * 壁の大きさball.r/2の法線ベクトルを円の中心の位置ベクトルに足して、接点の位置ベクトルを出す。
 		 */
-		const Vector p1 = {before.center.x + a*k, before.center.y - k}; // 壁との接点の位置ベクトル
-		const Vector p2 = {after->center.x + a*k, after->center.y - k};
-		// printf("%f, %f\n", p1.y, p2.y);
+		const Vector p1 = {before.center.x + is*w.a*k, before.center.y - is*k}; // 壁との接点の位置ベクトル
+		const Vector p2 = {after->center.x + is*w.a*k, after->center.y - is*k};
 		const float m = dx*(p1.y - w.pos1.y) - dy*(p1.x - w.pos1.x);
 		const float n = dx*(p2.y - w.pos1.y) - dy*(p2.x - w.pos1.x);
-		if(m*n < 0) {
-			printf("reflect\n");
-			if(m > 0) { // 床
-				// printf("called\n");
-			} else if (m < 0){
-				// after->center.y = p2.y + after->r/2;
+		// if (p1.y == y) {
+		// 	after->center.y = y - after->r/2;
+		// } else {
+			if(m*n < 0) { // 貫通した
+				// printf("%f, %f\n", m, n);
+				if(m < 0) { // 下・左に壁
+					if(y > after->center.y) {
+						after->center.y = y - after->r/2 -0.1; // とりあえず応急処置の-0.1
+						after->v.y *= (float) -e;
+					}
+					if(x < after->center.x) { // | o
+						after->center.x = x + after->r/2 +0.1;
+						after->v.x *= (float) -e;
+					}
+				} else if (m > 0){ // 上・右に壁
+					if(y < after->center.y) {
+						after->center.y = y + after->r/2 +0.1; // とりあえず応急処置の-0.1
+						after->v.y *= (float) -e;
+					}
+					if(x > after->center.x) {// o |
+						after->center.x = x - after->r/2 -0.1;
+						after->v.x *= (float) -e;
+					}
+				}
+
+			} else if (m == 0 || n == 0){ // 接した 処理が重くない限り使える
 			}
-			// after->v.y *= (float) -e;
-		}
 
-		// const float d_b = (float) (fabsf(a*before.center.x - before.center.y + c) / under);
-		// const float d_a = (float) (fabsf(a*after->center.x - after->center.y + c) / under);
+			// const float d_b = (float) (fabsf(a*before.center.x - before.center.y + c) / under);
+			// const float d_a = (float) (fabsf(a*after->center.x - after->center.y + c) / under);
 
-		// const float d = (float)(fabsf(vec.y * ball->center.x - vec.x * ball->center.y + w.pos2.x * w.pos1.y - w.pos1.x * w.pos2.y)/(sqrt(pow(vec.x, 2) + pow(vec.y, 2))));
-		// printf("%4.2f, %4.2f, %4.2f\n", a, c, d);
-		// if(d <= ball->r) {
-		// 	// printf("reflect\n");
-		// 	const float y = a*ball->center.x + c;
-		// 	if(y > ball->center.y) { // 床
-		// 		// printf("called\n");
-		// 		printf("%f, %f, %f\n", y, ball->center.y, d);
-		// 		// ball->center.y = ball->center.y - (ball->r/2 - (y - ball->center.y));
-		// 		// ball->v.y *= (float) -e;
-		// 	} else if (y < ball->center.y){
-		// 		// ball->center.y = y + ball->r/2;
-		// 		// ball->v.y *= (float) -e;
-		// 	}
-		//
-		// 	// if(ball->center.y + ball->r/2 >= y[0] && ball->center.y - ball->r/2 < y[1]) {
-		// 	// 	ball->center.y = y[0] - ball->r/2;
-		// 	// 	ball->v.y *= (float) -e;
-		// 	// }
-		// 	//
-		// 	// if(ball->center.y + ball->r/2 < y[0] && ball->center.y - ball->r/2 >= y[1]) {
-		// 	// 	ball->center.y = y[1] + ball->r/2;
-		// 	// 	ball->v.y *= (float) -e;
-		// 	// }
-		//
+			// const float d = (float)(fabsf(vec.y * ball->center.x - vec.x * ball->center.y + w.pos2.x * w.pos1.y - w.pos1.x * w.pos2.y)/(sqrt(pow(vec.x, 2) + pow(vec.y, 2))));
+
 		// }
 	}
 }
@@ -268,6 +272,9 @@ int main(int argc, char **argv) {
 	addWall((Vector) {WIDTH, 0}, (Vector) {WIDTH, HEIGHT});     // 右
 	addWall((Vector) {0, HEIGHT}, (Vector) {WIDTH, HEIGHT});// 下
 
+	addWall((Vector) {0, HEIGHT/2.0}, (Vector) {WIDTH, HEIGHT/2.0});
+	// addWall((Vector) {0,  0}, (Vector) {WIDTH, HEIGHT});
+
 	while(1){
 
 		// XDrawString(dpy, exit, gc, 4, 10,"Exit", 4);
@@ -280,6 +287,7 @@ int main(int argc, char **argv) {
 						mouse.x = (float) event.xmotion.x;
 						mouse.y = (float) event.xmotion.y;
 						rotate_point(&mouse, start, PI);
+						// TODO: 最大の矢印を実装
 						// if(sqrt(pow(mouse.x - start.x, 2) + pow(mouse.y - start.y, 2)) >= 100) {
 						// 	continue;
 						// }
@@ -292,7 +300,7 @@ int main(int argc, char **argv) {
 							case MOUSE_LEFT:
 								start.x = (float) event.xbutton.x;
 								start.y = (float) event.xbutton.y;
-								const float r = 50; // 半径
+								const float r = 100; // 半径
 								const float mass = 5;
 								addBall(start, (Vector) {0, 0}, (Vector) {0, 0}, 0, r, 0, mass);
 								isWriting = 1;
@@ -331,35 +339,14 @@ int main(int argc, char **argv) {
 				Ball *ball = placed_balls+i;
 				if(ball->r <= 0) continue;
 				const Ball before = *ball;
-				// printf("%d, ", (int)ball->v.y);
 
 				ball->v.x += ball->a.x * (float)t;
 				ball->v.y += ball->a.y * (float)t;
 				ball->center.x += ball->v.x * (float)t;
 				ball->center.y += ball->v.y * (float)t;
 				ball->rad -= ball->r_speed * (float)t;
-
+				if (ball->rad > 2*PI) ball->rad -= (float) (2*PI);
 				reflect(before, ball);
-				// if((*ball)) {
-				// 	printf("called\n");
-				// }
-				// if(ball->center.x - ball->r/2 < 0 && ball->v.x < 0) { // 左端
-				// 	ball->v.x *= (float) -e;
-				// 	ball->r_speed *= (float) -e;
-				// }
-				// if(ball->center.x + ball->r/2 > WIDTH && ball->v.x > 0) { // 右端
-				// 	ball->v.x *= (float) -e;
-				// 	ball->r_speed *= (float) -e;
-				// }
-				// if(ball->center.y - ball->r/2 < 0 && ball->v.y < 0) { // 上端
-				// 	ball->v.y *= (float) -e;
-				// }
-				// if(ball->center.y + ball->r/2 > HEIGHT && ball->v.y > 0) { // 下端
-				// 	ball->center.y = HEIGHT - ball->r/2;
-				// 	ball->v.y *= (float) -e;
-				// }
-
-				// printf("%d\n", (int)ball->v.y);
 
 			}
 
