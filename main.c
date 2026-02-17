@@ -26,7 +26,7 @@
 #define PI 3.1415926535
 
 #define g 9.80665
-#define e 0.92
+#define e 0.88
 
 #define t 0.1
 
@@ -137,6 +137,17 @@ void DrawBall(Display *dpy, const Window w, GC gc, Ball *ball) {
 
 }
 
+void DrawWall(Display *dpy, const Window w, GC gc, Wall *wall) {
+	if(wall->pos1.x == -1) return;
+	XSetForeground(dpy, gc, black);
+	XDrawLine(dpy, w, gc, (int) wall->pos1.x, (int) wall->pos1.y, (int) wall->pos2.x, (int) wall->pos2.y);
+}
+
+void DrawWalls(Display *dpy, const Window w, GC gc) {
+	for(int i = 0; i < WALL_MAX; ++i)
+		DrawWall(dpy, w, gc, placed_walls+i);
+}
+
 void DrawBalls(Display *dpy, const Window w, GC gc) {
 	for(int i = 0; i < MAX; ++i)
 		DrawBall(dpy, w, gc, placed_balls+i);
@@ -146,43 +157,67 @@ float dot(const Vector a, const Vector b) {
 	return a.x*b.x + a.y+b.y;
 }
 
-void reflect(Ball *ball) {
+void reflect(const Ball before, Ball *after) {
 	for(int i = 0;i < WALL_MAX; ++i) {
-		Wall w = placed_walls[i];
+		const Wall w = placed_walls[i];
 		if(w.pos1.x == -1) continue;
-		// if (w.pos1.x > w.pos2.x) {
-		// 	const Vector a = w.pos2;
-		// 	w.pos2 = w.pos1;
-		// 	w.pos1 = a;
-		// }
-		// const Vector vec = (Vector) {w.pos2.x - w.pos1.x, w.pos2.y - w.pos1.y};
-
-		const float a = (w.pos2.y - w.pos1.y) / (w.pos2.x - w.pos1.x);
-		const float b = w.pos1.y - a*w.pos1.x;
-		const float d = (float) (fabsf(a*ball->center.x - ball->center.y + b) / sqrt(pow(a, 2) + pow(b, 2)));
-		// const float d = (float)(fabsf(vec.y * ball->center.x - vec.x * ball->center.y + w.pos2.x * w.pos1.y - w.pos1.x * w.pos2.y)/(sqrt(pow(vec.x, 2) + pow(vec.y, 2))));
-		printf("%4.2f, %4.2f, %4.2f\n", a, b, d);
-		if(d <= ball->r) {
-			float y[2];
-			if(w.pos1.y > w.pos2.y) {
-				y[0] = w.pos1.y;
-				y[1] = w.pos2.y;
-			} else {
-				y[0] = w.pos2.y;
-				y[1] = w.pos1.y;
+		const float dx = w.pos2.x - w.pos1.x;
+		const float dy = w.pos2.y - w.pos1.y;
+		float a = 0; // x = c
+		if ((int) dx != 0) {
+			a = dy / dx;// y = ax+c
+		} // ax - y + c = 0
+		// const float c = w.pos1.y - a*w.pos1.x;
+		const float under = sqrtf(powf(a, 2) + 1);
+		const float k = under*after->r/2;
+		/*
+		 * todo: 法線ベクトルの向きの考慮
+		 * 壁の大きさball.r/2の法線ベクトルを円の中心の位置ベクトルに足して、接点の位置ベクトルを出す。
+		 */
+		const Vector p1 = {before.center.x + a*k, before.center.y - k}; // 壁との接点の位置ベクトル
+		const Vector p2 = {after->center.x + a*k, after->center.y - k};
+		// printf("%f, %f\n", p1.y, p2.y);
+		const float m = dx*(p1.y - w.pos1.y) - dy*(p1.x - w.pos1.x);
+		const float n = dx*(p2.y - w.pos1.y) - dy*(p2.x - w.pos1.x);
+		if(m*n < 0) {
+			printf("reflect\n");
+			if(m > 0) { // 床
+				// printf("called\n");
+			} else if (m < 0){
+				// after->center.y = p2.y + after->r/2;
 			}
-
-			if(ball->center.y + ball->r/2 >= y[0] && ball->center.y - ball->r/2 < y[1]) {
-				ball->center.y = y[0] - ball->r/2;
-				ball->v.y *= (float) -e;
-			}
-
-			// if(ball->center.y + ball->r/2 < y[0] && ball->center.y - ball->r/2 >= y[1]) {
-			// 	ball->center.y = y[1] + ball->r/2;
-			// 	ball->v.y *= (float) -e;
-			// }
-
+			// after->v.y *= (float) -e;
 		}
+
+		// const float d_b = (float) (fabsf(a*before.center.x - before.center.y + c) / under);
+		// const float d_a = (float) (fabsf(a*after->center.x - after->center.y + c) / under);
+
+		// const float d = (float)(fabsf(vec.y * ball->center.x - vec.x * ball->center.y + w.pos2.x * w.pos1.y - w.pos1.x * w.pos2.y)/(sqrt(pow(vec.x, 2) + pow(vec.y, 2))));
+		// printf("%4.2f, %4.2f, %4.2f\n", a, c, d);
+		// if(d <= ball->r) {
+		// 	// printf("reflect\n");
+		// 	const float y = a*ball->center.x + c;
+		// 	if(y > ball->center.y) { // 床
+		// 		// printf("called\n");
+		// 		printf("%f, %f, %f\n", y, ball->center.y, d);
+		// 		// ball->center.y = ball->center.y - (ball->r/2 - (y - ball->center.y));
+		// 		// ball->v.y *= (float) -e;
+		// 	} else if (y < ball->center.y){
+		// 		// ball->center.y = y + ball->r/2;
+		// 		// ball->v.y *= (float) -e;
+		// 	}
+		//
+		// 	// if(ball->center.y + ball->r/2 >= y[0] && ball->center.y - ball->r/2 < y[1]) {
+		// 	// 	ball->center.y = y[0] - ball->r/2;
+		// 	// 	ball->v.y *= (float) -e;
+		// 	// }
+		// 	//
+		// 	// if(ball->center.y + ball->r/2 < y[0] && ball->center.y - ball->r/2 >= y[1]) {
+		// 	// 	ball->center.y = y[1] + ball->r/2;
+		// 	// 	ball->v.y *= (float) -e;
+		// 	// }
+		//
+		// }
 	}
 }
 
@@ -295,7 +330,7 @@ int main(int argc, char **argv) {
 
 				Ball *ball = placed_balls+i;
 				if(ball->r <= 0) continue;
-
+				const Ball before = *ball;
 				// printf("%d, ", (int)ball->v.y);
 
 				ball->v.x += ball->a.x * (float)t;
@@ -304,7 +339,7 @@ int main(int argc, char **argv) {
 				ball->center.y += ball->v.y * (float)t;
 				ball->rad -= ball->r_speed * (float)t;
 
-				reflect(ball);
+				reflect(before, ball);
 				// if((*ball)) {
 				// 	printf("called\n");
 				// }
@@ -329,6 +364,7 @@ int main(int argc, char **argv) {
 			}
 
 			DrawBalls(dpy, w, gc);
+			DrawWalls(dpy, w, gc);
 
 			if(isWriting == 1 && mouse.x != -1) {
 				XSetForeground(dpy, gc, black);
