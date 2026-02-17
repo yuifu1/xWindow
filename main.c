@@ -44,7 +44,8 @@ typedef struct {
 	Vector pos1;
 	Vector pos2;
 	float a;
-	float c; // ax - y + c = 0
+	float b;
+	float c; // ax + by + c = 0
 } Wall;
 
 typedef struct {
@@ -81,9 +82,21 @@ Ball* addBall(const Vector center, const Vector v, const Vector a, const float r
 Wall* addWall(const Vector pos1, const Vector pos2) {
 	const float dx = pos2.x - pos1.x;
 	const float dy = pos2.y - pos1.y;
-	float a = 0; // x = c
-	if ((int) dx != 0) {
+
+	float a, b;
+	if(dx < 0 || 0 < dx) {
 		a = dy / dx;// y = ax+c
+	} else {
+		a = 0;
+	}
+	if(dy < 0 || 0 < dy) {
+
+	} else {
+
+	}
+
+	if ((int) dx != 0) {
+		a = dy / dx; // y = ax+c
 	} // ax - y + c = 0
 	const float c = pos1.y - a*pos1.x;
 	const Wall wall = {pos1, pos2, a, c};
@@ -176,7 +189,7 @@ void reflect(const Ball before, Ball *after) {
 		const float k = under*after->r/2;
 		const float y = w.a*after->center.x + w.c;
 		float x = 0;
-		if (w.a != 0) {
+		if (w.a < 0 || 0 < w.a) {
 			x = (after->center.y - w.c) / w.a;
 		}
 		float is = 1;
@@ -194,20 +207,24 @@ void reflect(const Ball before, Ball *after) {
 			if(m*n < 0) { // 貫通した
 				// printf("%f, %f\n", m, n);
 				if(m < 0) { // 下・左に壁
-					if(y > after->center.y) {
+					printf("%f, %f, %f\n", p1.x, x, p2.x);
+					if(p1.y < y && y < p2.y) { // 上・下に壁
 						after->center.y = y - after->r/2 -0.1; // とりあえず応急処置の-0.1
 						after->v.y *= (float) -e;
 					}
-					if(x < after->center.x) { // | o
+					if(p1.x > x && x > p2.x) { // | o
+						printf("a called\n");
 						after->center.x = x + after->r/2 +0.1;
 						after->v.x *= (float) -e;
 					}
 				} else if (m > 0){ // 上・右に壁
-					if(y < after->center.y) {
+					printf("%f, %f, %f\n", p1.x, x, p2.x);
+					if(p1.y > y && y > p2.y) {
 						after->center.y = y + after->r/2 +0.1; // とりあえず応急処置の-0.1
 						after->v.y *= (float) -e;
 					}
-					if(x > after->center.x) {// o |
+					if(p1.x < x && x < p2.x) {// o |
+						printf("b called\n");
 						after->center.x = x - after->r/2 -0.1;
 						after->v.x *= (float) -e;
 					}
@@ -268,7 +285,7 @@ int main(int argc, char **argv) {
 	int isWriting = 0;
 
 	addWall((Vector) {0, 0}, (Vector) {WIDTH, 0});			// 上
-	addWall((Vector) {0, 0}, (Vector) {0, HEIGHT});			// 左
+	addWall((Vector) {10, 0}, (Vector) {10, HEIGHT});			// 左
 	addWall((Vector) {WIDTH, 0}, (Vector) {WIDTH, HEIGHT});     // 右
 	addWall((Vector) {0, HEIGHT}, (Vector) {WIDTH, HEIGHT});// 下
 
