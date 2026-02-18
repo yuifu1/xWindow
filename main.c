@@ -45,7 +45,7 @@ float length(const Vector v) {
 }
 
 float dot(const Vector a, const Vector b) {
-	return a.x*b.x + a.y+b.y;
+	return a.x*b.x + a.y*b.y;
 }
 
 typedef struct {
@@ -199,82 +199,71 @@ void DrawBalls(Display *dpy, const Window w, GC gc) {
 		DrawBall(dpy, w, gc, placed_balls+i);
 }
 
+/**
+ * ボールを壁で反射させる関数
+ * @param ball 反射させるボールオブジェクトへのポインタ(速度が更新される)
+ * @param wall_n 壁の法線ベクトル(正規化済み)
+ * @param coef 反発係数(0.0〜1.0)
+ */
+void reflect_ball(Ball* ball, const Vector wall_n, const float coef) {
+	// 法線方向と接線方向に速度を分解
+	const float v_dot_n = dot(ball->v, wall_n);
+	
+	// 法線方向の成分
+	const Vector v_normal = {
+		v_dot_n * wall_n.x,
+		v_dot_n * wall_n.y
+	};
+	
+	// 接線方向の成分
+	const Vector v_tangent = {
+		ball->v.x - v_normal.x,
+		ball->v.y - v_normal.y
+	};
+	
+	// 反射後の速度ベクトル: 法線方向は反発係数を適用し反転、接線方向はそのまま
+	ball->v.x = v_tangent.x - coef * v_normal.x;
+	ball->v.y = v_tangent.y - coef * v_normal.y;
+}
+
 void reflect(const Ball before, Ball *after) {
-	for(int i = 0;i < WALL_MAX; ++i) {
+	for(int i = 0; i < WALL_MAX; ++i) {
 		const Wall w = placed_walls[i];
 		if(w.pos1.x == -1) continue;
-		if(w.b == 0) { // x = c
-
-		} else {
-			const float y = w.a*before.center.x + w.c;
-			Vector n = w.n;
+		
+		// 壁との衝突判定
+		const float dx = w.pos2.x - w.pos1.x;
+		const float dy = w.pos2.y - w.pos1.y;
+		
+		// 法線ベクトルの方向を決定
+		Vector n = w.n;
+		if(w.b != 0) { // x = c ではない通常の壁
+			const float y = w.a * before.center.x + w.c;
 			if(y > before.center.y) n = (Vector) {-n.x, -n.y};
-
-			/*
-			 * 壁の大きさball.r/2の法線ベクトルを円の中心の位置ベクトルに足して、接点の位置ベクトルを出す。
-			 */
-			const float dx = w.pos2.x - w.pos1.x;
-			const float dy = w.pos2.y - w.pos1.y;
-			const Vector p1 = {before.center.x + n.x*after->r, before.center.y + n.y*after->r};
-			const Vector p2 = {after->center.x + n.x*after->r, after->center.y + n.y*after->r};
-			const float l = dx*(p1.y - w.pos1.y) - dy*(p1.x - w.pos1.x);
-			const float m = dx*(p2.y - w.pos1.y) - dy*(p2.x - w.pos1.x);
-			//  /*
-			//   * y = ax + c
-			//   * x = (y-c)/a
-			//   */
-			// printf("(%f, %f) (%f, %f) (%f, %f), (%f, %f)\n", before.center.x, before.center.y, after->center.x, after->center.y, p1.x, p1.y, p2.x, p2.y);
-			if(l*m < 0) { // 貫通した
-
-				const float d = fabsf(w.a*before.center.x - w.b*before.center.y + w.c) / w.l;
-				const float p_x = before.center.x + w.n.x*d; // 接点のx座標
-				const float p_y = w.a*p_x + w.c; //	接点のy座標
-				printf("thru %f (%f, %f)\n", d, p_x, p_y);
-
-				if(l > 0) { // ボールの上・に壁
-					printf("downer (%f, %f), (%f, %f), %f, %f\n", p1.x, p1.y, p2.x, p2.y, p_x, p_y);
-
-					if(p1.y > p_y && p_y > p2.y) {
-						after->center.y -= (float) (p2.y - p_y + 0.1); // とりあえず応急処置の+0.1
-						after->v.y *= -e;
-					}
-					// if(p1.x < p_x && p_x < p2.x) {
-					// 	after->center.x -= (float) (p_x - p2.x - 0.1);
-					// }
-
-					// float vn = dot(after->v, n);
-					//
-					// // 壁に向かっている時のみ反射
-					// if (vn < 0) {
-					//
-					// 	after->v.x -= (1 + e) * vn * n.x;
-					// 	after->v.y -= (1 + e) * vn * n.y;
-					//
-					// 	// 摩擦なし → 回転は適当
-					// 	// 必要ならここで角速度処理
-					// }
-				} else if (l < 0){ // ボールの下・に壁
-					printf("upper %f, %f\n", p1.x, p2.x);
-					// if(p1.y > p_y && p_y > p2.y) {
-					// 	after->center.y += (float) (p2.y - p_y + 0.1); // とりあえず応急処置の+0.1
-					// 	after->v.y *= (float) -e;
-					// }
-					// if(p1.x > p_x && p_x > p2.x) {
-					// 	after->center.x += (float) (p2.x - p_x + 0.1);
-					// 	after->v.x *= (float) -e;
-					// }
-
-					// if(p1.y > y && y > p2.y) {
-					// 	after->center.y = (float) (y + after->r/2 +0.1); // とりあえず応急処置の-0.1
-					// 	after->v.y *= (float) -e;
-					// }
-					// if(p1.x < x && x < p2.x) {// o |
-					// 	after->center.x = (float) (x - after->r/2 -0.1);
-					// 	after->v.x *= (float) -e;
-					// }
-				}
-
-			} else if (l == 0 || m == 0){ /* 接した */}
+		}
+		
+		// ボールの表面の点を計算
+		const Vector p1 = {before.center.x + n.x * after->r, before.center.y + n.y * after->r};
+		const Vector p2 = {after->center.x + n.x * after->r, after->center.y + n.y * after->r};
+		
+		// 壁を貫通したかチェック (外積を使用)
+		const float l = dx * (p1.y - w.pos1.y) - dy * (p1.x - w.pos1.x);
+		const float m = dx * (p2.y - w.pos1.y) - dy * (p2.x - w.pos1.x);
+		
+		if(l * m < 0) { // 貫通した
+			// 壁との最短距離を計算
+			const float norm_factor = sqrtf(w.a * w.a + w.b * w.b);
+			const float d = fabsf(w.a * after->center.x - w.b * after->center.y + w.c) / norm_factor;
+			
+			// ボールが壁に食い込んでいる場合、位置を補正
+			if(d < after->r) {
+				const float penetration = after->r - d;
+				after->center.x += w.n.x * penetration * (l > 0 ? 1 : -1);
+				after->center.y += w.n.y * penetration * (l > 0 ? 1 : -1);
+			}
+			
+			// 反射処理を実行
+			reflect_ball(after, n, e);
 		}
 	}
 }
