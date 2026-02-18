@@ -23,12 +23,13 @@
 #define NUM_2 88
 #define NUM_3 89
 
-#define PI 3.1415926535
+#define PI 3.14159265358979323846264338
 
 #define g 9.80665
-#define e 0.88 // 反発係数
+// #define g 0
+#define e 0.6 // 反発係数
 
-#define t 0.1
+#define t 0.01
 
 #define MAX 5
 #define WALL_MAX 10
@@ -150,10 +151,10 @@ void DrawBall(Display *dpy, const Window w, GC gc, Ball *ball) {
 	XSetForeground(dpy, gc, black);
 
 	Vector vpoint[4];
-	vpoint[0] = (Vector){pos.x, pos.y+(ball->r)-(ball->r/15)};
-	vpoint[1] = (Vector){pos.x+ball->r*2, vpoint[0].y};
-	vpoint[2] = (Vector){vpoint[1].x, vpoint[0].y+(ball->r*2/15)};
-	vpoint[3] = (Vector){vpoint[0].x, vpoint[2].y};
+	vpoint[0] = (Vector) {pos.x, pos.y+(ball->r)-(ball->r/15)};
+	vpoint[1] = (Vector) {pos.x+ball->r*2, vpoint[0].y};
+	vpoint[2] = (Vector) {vpoint[1].x, vpoint[0].y+(ball->r*2/15)};
+	vpoint[3] = (Vector) {vpoint[0].x, vpoint[2].y};
 
 	for(int i = 0; i < 4; i++){
 		rotate_point(&vpoint[i], ball->center, ball->rad);
@@ -226,21 +227,22 @@ void reflect(const Ball before, Ball *after) {
 			// printf("(%f, %f) (%f, %f) (%f, %f), (%f, %f)\n", before.center.x, before.center.y, after->center.x, after->center.y, p1.x, p1.y, p2.x, p2.y);
 			if(l*m < 0) { // 貫通した
 
-				const float d = fabsf(w.a*before.center.x - w.b*before.center.y + w.c) / w.l;
+				const float d = fabsf(w.a*before.center.x + w.b*before.center.y + w.c) / sqrtf(powf(w.a, 2) + powf(w.b, 2));
 				const float p_x = before.center.x + w.n.x*d; // 接点のx座標
 				const float p_y = w.a*p_x + w.c; //	接点のy座標
-				printf("thru %f (%f, %f)\n", d, p_x, p_y);
+				printf("thru (%f, %f) %f (%f, %f)\n", before.center.x, before.center.y, d, p_x, p_y);
 
 				if(l > 0) { // ボールの上・に壁
-					printf("downer (%f, %f), (%f, %f), %f, %f\n", p1.x, p1.y, p2.x, p2.y, p_x, p_y);
+					printf("downer (%f, %f) (%f, %f), (%f, %f)\n", n.x, n.y, p1.x, p1.y, p2.x, p2.y);
 
 					if(p1.y > p_y && p_y > p2.y) {
-						after->center.y -= (float) (p2.y - p_y + 0.1); // とりあえず応急処置の+0.1
-						after->v.y *= -e;
+						after->center.y -= (float) (p1.y - p_y - 0.2); // とりあえず応急処置の+0.1
+						after->v.y *= (float)-e;
 					}
-					// if(p1.x < p_x && p_x < p2.x) {
-					// 	after->center.x -= (float) (p_x - p2.x - 0.1);
-					// }
+					if(p1.x < p_x && p_x < p2.x) {
+						after->center.x -= (float) (p_x - p2.x + 0.2);
+						after->v.x *= (float)-e;
+					}
 
 					// float vn = dot(after->v, n);
 					//
@@ -253,28 +255,16 @@ void reflect(const Ball before, Ball *after) {
 					// 	// 摩擦なし → 回転は適当
 					// 	// 必要ならここで角速度処理
 					// }
-				} else if (l < 0){ // ボールの下・に壁
-					printf("upper %f, %f\n", p1.x, p2.x);
-					// if(p1.y > p_y && p_y > p2.y) {
-					// 	after->center.y += (float) (p2.y - p_y + 0.1); // とりあえず応急処置の+0.1
-					// 	after->v.y *= (float) -e;
-					// }
-					// if(p1.x > p_x && p_x > p2.x) {
-					// 	after->center.x += (float) (p2.x - p_x + 0.1);
-					// 	after->v.x *= (float) -e;
-					// }
+				} else if (l < 0){ // ボールの下・に壁'
+					printf("upper (%f, %f) (%f, %f), (%f, %f)\n", n.x, n.y, p1.x, p1.y, p2.x, p2.y);
 
-					// if(p1.y > y && y > p2.y) {
-					// 	after->center.y = (float) (y + after->r/2 +0.1); // とりあえず応急処置の-0.1
-					// 	after->v.y *= (float) -e;
-					// }
-					// if(p1.x < x && x < p2.x) {// o |
-					// 	after->center.x = (float) (x - after->r/2 -0.1);
-					// 	after->v.x *= (float) -e;
-					// }
+					if(p1.y < p_y && p_y < p2.y) {
+						after->center.y -= (float) (p_y - p1.y +  0.3); // とりあえず応急処置の+0.1
+						after->v.y *= (float)-e;
+					}
 				}
 
-			} else if (l == 0 || m == 0){ /* 接した */}
+			} else if (l == 0 || m == 0){/* 接した */}
 		}
 	}
 }
@@ -321,10 +311,10 @@ int main(int argc, char **argv) {
 
 	int isWriting = 0;
 
-	addWall((Vector) {0, 0}, (Vector) {WIDTH, 0});			// 上
+	// addWall((Vector) {0, 0}, (Vector) {WIDTH, 0});			// 上
 	// addWall((Vector) {0, 0}, (Vector) {0, HEIGHT});			// 左
 	// addWall((Vector) {WIDTH, 0}, (Vector) {WIDTH, HEIGHT}); // 右
-	addWall((Vector) {0, HEIGHT}, (Vector) {WIDTH, HEIGHT});// 下
+	// addWall((Vector) {0, HEIGHT}, (Vector) {WIDTH, HEIGHT});// 下
 
 	addWall((Vector) {0, HEIGHT/2.0}, (Vector) {WIDTH, HEIGHT/2.0});
 	// addWall((Vector) {0,  0}, (Vector) {WIDTH, HEIGHT});
