@@ -1,1 +1,0 @@
-/usr/bin/cc -Wl,--dependency-file=CMakeFiles/xWindow.dir/link.d CMakeFiles/xWindow.dir/main.c.o -o xWindow  /usr/lib/x86_64-linux-gnu/libX11.so -lm
