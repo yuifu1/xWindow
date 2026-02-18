@@ -252,7 +252,8 @@ void reflect(const Ball before, Ball *after) {
 		
 		if(l * m < 0) { // 貫通した
 			// 壁との最短距離を計算
-			const float d = fabsf(w.a * after->center.x - w.b * after->center.y + w.c) / sqrtf(w.a * w.a + w.b * w.b);
+			const float norm_factor = sqrtf(w.a * w.a + w.b * w.b);
+			const float d = fabsf(w.a * after->center.x - w.b * after->center.y + w.c) / norm_factor;
 			
 			// ボールが壁に食い込んでいる場合、位置を補正
 			if(d < after->r) {
