@@ -1,0 +1,3 @@
+/home/runner/work/xWindow/xWindow/build/CMakeFiles/xWindow.dir
+/home/runner/work/xWindow/xWindow/build/CMakeFiles/edit_cache.dir
+/home/runner/work/xWindow/xWindow/build/CMakeFiles/rebuild_cache.dir
