@@ -23,18 +23,23 @@
 #define NUM_2 88
 #define NUM_3 89
 
-#define PI 3.14159265358979323846264338
+#define PI 3.1415926535
 
 #define g 9.80665
-// #define g 0
-#define e 0.6 // 反発係数
+#define e 0.88 // 反発係数
 
-#define t 0.01
+#define t 0.1
+#define SLEEP_TIME 8000 // [μs]
+
+#define R_C 80
 
 #define MAX 5
 #define WALL_MAX 10
 
-unsigned long white, black, red, gray;
+#define red 0xFF0000
+#define gray 0xBEBEBE
+#define white 0xFFFFFF
+#define black 0x000000
 
 typedef struct {
 	float x;
@@ -46,7 +51,7 @@ float length(const Vector v) {
 }
 
 float dot(const Vector a, const Vector b) {
-	return a.x*b.x + a.y+b.y;
+	return a.x*b.x + a.y*b.y;
 }
 
 typedef struct {
@@ -56,7 +61,10 @@ typedef struct {
 	float b;
 	float c; // ax  - y + c = 0
 	Vector n; // 単位法線ベクトル
-	float l;
+	float minX;
+	float maxX;
+	float minY;
+	float maxY;
 } Wall;
 
 typedef struct {
@@ -117,10 +125,14 @@ Wall* addWall(Vector pos1, Vector pos2) {
 	Vector n = (Vector) {dy, -dx};
 	const float l = length(n);
 	n = (Vector) {n.x/l, n.y/l}; // 点は考慮しない
-	const Wall wall = {pos1, pos2, a, b, c, n, l};
-	printf("a = %f, b = %f, c = %f, n = (%f, %f)\n", wall.a, wall.b, wall.c, wall.n.x, wall.n.y);
+	const float min_x = pos1.x < pos2.x ? pos1.x : pos2.x;
+	const float max_x = pos1.x > pos2.x ? pos1.x : pos2.x;
+	const float min_y = pos1.y < pos2.y ? pos1.y : pos2.y;
+	const float max_y = pos1.y > pos2.y ? pos1.y : pos2.y;
+	const Wall w = {pos1, pos2, a, b, c, n, min_x, max_x, min_y, max_y};
+	printf("Wall generated:\n\ta = %f, b = %f, c = %f, n = (%f, %f)\n", a, b, c, n.x, n.y);
 	if (++wall_last >= WALL_MAX) wall_last = 0;
-	placed_walls[wall_last] = wall;
+	placed_walls[wall_last] = w;
 	return placed_walls + wall_last;
 }
 
@@ -204,67 +216,93 @@ void reflect(const Ball before, Ball *after) {
 	for(int i = 0;i < WALL_MAX; ++i) {
 		const Wall w = placed_walls[i];
 		if(w.pos1.x == -1) continue;
+		Vector n = w.n;
+
+		const float dx = w.pos2.x - w.pos1.x;
+		const float dy = w.pos2.y - w.pos1.y;
+
 		if(w.b == 0) { // x = c
+
+			// ★ 線分の範囲内かチェック（Y座標）
+			if (after->center.y < w.minY - after->r || after->center.y > w.maxY + after->r) {
+				continue; // 線分の範囲外なので反射しない
+			}
+
+			if (w.pos1.x < before.center.x) {
+				n = (Vector) {-n.x, -n.y};
+				const Vector p1 = {before.center.x + n.x*before.r, before.center.y};
+				const Vector p2 = {after->center.x + n.x*after->r, after->center.y};
+				if(p2.x < w.pos1.x && w.pos1.x < p1.x) {// 左に壁
+					after->center.x += p1.x - w.pos1.x + 1;
+					after->v.x *= (float)-e;
+				}
+			} else if(w.pos1.x > before.center.x) {
+				const Vector p1 = {before.center.x + n.x*before.r, before.center.y};
+				const Vector p2 = {after->center.x + n.x*after->r, after->center.y};
+				if (p1.x < w.pos1.x && w.pos1.x < p2.x) { // pos1.x = pos2.x
+					// 右に壁
+					after->center.x -= p2.x - w.pos1.x  -1;
+					after->v.x *= (float)-e;
+				}
+			}
 
 		} else {
 			const float y = w.a*before.center.x + w.c;
-			Vector n = w.n;
 			if(y > before.center.y) n = (Vector) {-n.x, -n.y};
-
 			/*
 			 * 壁の大きさball.r/2の法線ベクトルを円の中心の位置ベクトルに足して、接点の位置ベクトルを出す。
 			 */
-			const float dx = w.pos2.x - w.pos1.x;
-			const float dy = w.pos2.y - w.pos1.y;
-			const Vector p1 = {before.center.x + n.x*after->r, before.center.y + n.y*after->r};
+			const Vector p1 = {before.center.x + n.x*before.r, before.center.y + n.y*before.r};
 			const Vector p2 = {after->center.x + n.x*after->r, after->center.y + n.y*after->r};
-			const float l = dx*(p1.y - w.pos1.y) - dy*(p1.x - w.pos1.x);
+			// const float l = dx*(p1.y - w.pos1.y) - dy*(p1.x - w.pos1.x);
+			const float l = dx*(before.center.y - w.pos1.y) - dy*(before.center.x - w.pos1.x);
 			const float m = dx*(p2.y - w.pos1.y) - dy*(p2.x - w.pos1.x);
-			//  /*
-			//   * y = ax + c
-			//   * x = (y-c)/a
-			//   */
-			// printf("(%f, %f) (%f, %f) (%f, %f), (%f, %f)\n", before.center.x, before.center.y, after->center.x, after->center.y, p1.x, p1.y, p2.x, p2.y);
+
+			// printf("(%f, %f) (%f, %f) (%f, %f)\n", n.x, n.y, dx, dy, l, m);
 			if(l*m < 0) { // 貫通した
 
 				const float d = fabsf(w.a*before.center.x + w.b*before.center.y + w.c) / sqrtf(powf(w.a, 2) + powf(w.b, 2));
-				const float p_x = before.center.x + w.n.x*d; // 接点のx座標
+				const float p_x = before.center.x + n.x*d; // 接点のx座標
 				const float p_y = w.a*p_x + w.c; //	接点のy座標
-				printf("thru (%f, %f) %f (%f, %f)\n", before.center.x, before.center.y, d, p_x, p_y);
 
-				if(l > 0) { // ボールの上・に壁
-					printf("downer (%f, %f) (%f, %f), (%f, %f)\n", n.x, n.y, p1.x, p1.y, p2.x, p2.y);
+				// 線分の範囲内か
 
+				if (p_x < w.minX - before.r || p_x > w.maxX + before.r ||
+				    p_y < w.minY - before.r || p_y > w.maxY + before.r) {
+					continue; // 範囲外
+				}
+
+				// printf("thru (%f, %f) %f (%f, %f)\n", before.center.x, before.center.y, d, p_x, p_y);
+
+				if(y < before.center.y) { // ボールの上に壁
+					// printf("downer (%f, %f) (%f, %f), (%f, %f)\n", n.x, n.y, p1.x, p1.y, p2.x, p2.y);
 					if(p1.y > p_y && p_y > p2.y) {
-						after->center.y -= (float) (p1.y - p_y - 0.2); // とりあえず応急処置の+0.1
+						after->center.y -= (float) (p1.y - p_y);
 						after->v.y *= (float)-e;
 					}
 					if(p1.x < p_x && p_x < p2.x) {
-						after->center.x -= (float) (p_x - p2.x + 0.2);
+						after->center.x -= (float) (p_x - p2.x);
 						after->v.x *= (float)-e;
 					}
-
-					// float vn = dot(after->v, n);
-					//
-					// // 壁に向かっている時のみ反射
-					// if (vn < 0) {
-					//
-					// 	after->v.x -= (1 + e) * vn * n.x;
-					// 	after->v.y -= (1 + e) * vn * n.y;
-					//
-					// 	// 摩擦なし → 回転は適当
-					// 	// 必要ならここで角速度処理
-					// }
-				} else if (l < 0){ // ボールの下・に壁'
-					printf("upper (%f, %f) (%f, %f), (%f, %f)\n", n.x, n.y, p1.x, p1.y, p2.x, p2.y);
-
+				} else if (y > before.center.y){ // ボールの下に壁'
+					printf("upper (%f, %f) (%f, %f), (%f, %f)\n", p_x, p_y, p1.x, p1.y, p2.x, p2.y);
 					if(p1.y < p_y && p_y < p2.y) {
-						after->center.y -= (float) (p_y - p1.y +  0.3); // とりあえず応急処置の+0.1
-						after->v.y *= (float)-e;
+						after->center.y = (float) (after->center.y - (p_y - p1.y));
+						// after->v.y *= (float)-e;
 					}
-				}
+					if(p1.x > p_x && p_x > p2.x) {
+						after->center.x -= (float) (p2.x - p_x);
+						// after->v.x *= (float)-e;
+					}
 
-			} else if (l == 0 || m == 0){/* 接した */}
+					const float vn = dot(after->v, n);
+					after->v.x -= (1 + e) * vn * n.x;
+					after->v.y -= (1 + e) * vn * n.y;
+
+						// 摩擦なし → 回転は適当
+						// 必要ならここで角速度処理
+				}
+			}
 		}
 	}
 }
@@ -272,33 +310,29 @@ void reflect(const Ball before, Ball *after) {
 int main(int argc, char **argv) {
 
 	for (int i = 0; i < MAX; i++) {
-		placed_balls[i] = (Ball) {(Vector) {0,0}, (Vector) {0,0}, (Vector) {0,0}, 0, 0,  0, 0};
+		placed_balls[i] = (Ball) {
+			(Vector) {0,0},
+			(Vector) {0,0},
+			(Vector) {0,0},
+			0, 0,  0, 0
+		};
 	}
 
 	for (int i = 0; i < WALL_MAX; i++) {
-		placed_walls[i] = (Wall) {(Vector) {-1, -1}, (Vector) {-1, -1}};
+		placed_walls[i] = (Wall) {
+			(Vector) {-1, -1},
+			(Vector) {-1, -1}
+		};
 	}
 
+
 	Display *dpy = XOpenDisplay("");
-	const int screen = DefaultScreen(dpy);
-	white = WhitePixel(dpy, screen);
-	black = BlackPixel(dpy, screen);
 	const Window root = DefaultRootWindow(dpy);
 	const Window w = XCreateSimpleWindow(dpy, root, 100, 100, WIDTH, HEIGHT, BORDER, black, white);
 	XMapWindow(dpy, w);
 	GC gc = XCreateGC(dpy, w, 0, NULL);
 
-	const Colormap cmap = DefaultColormap(dpy, 0);       /* カラーマップ構造体 */
-	XColor c0, red_, gray_, green_, blue_;             /* カラー構造体 */
-	XAllocNamedColor(dpy, cmap, "red", &red_, &c0); /* COLOUR.pixel */
-	XAllocNamedColor(dpy, cmap, "gray", &gray_, &c0);
-	XAllocNamedColor(dpy, cmap, "Light green", &green_, &c0);
-	XAllocNamedColor(dpy, cmap, "blue", &blue_, &c0);
-
-	red = red_.pixel;
-	gray = gray_.pixel;
-
-	const Window exit = XCreateSimpleWindow(dpy, w, 10, 10, 50, 30, BORDER, black, white); // exit window
+	const Window exit = XCreateSimpleWindow(dpy, w, 10, 10, 50, 30, BORDER, black, gray); // exit window
 	XMapSubwindows(dpy, w);
 
 	XSelectInput(dpy, w, PointerMotionMask | ButtonPressMask | ButtonReleaseMask);
@@ -311,17 +345,15 @@ int main(int argc, char **argv) {
 
 	int isWriting = 0;
 
-	// addWall((Vector) {0, 0}, (Vector) {WIDTH, 0});			// 上
-	// addWall((Vector) {0, 0}, (Vector) {0, HEIGHT});			// 左
-	// addWall((Vector) {WIDTH, 0}, (Vector) {WIDTH, HEIGHT}); // 右
-	// addWall((Vector) {0, HEIGHT}, (Vector) {WIDTH, HEIGHT});// 下
+	addWall((Vector) {0, 0}, (Vector) {WIDTH, 0});			// 上
+	addWall((Vector) {0, 0}, (Vector) {0, HEIGHT});			// 左
+	addWall((Vector) {WIDTH, 0}, (Vector) {WIDTH, HEIGHT}); // 右
+	addWall((Vector) {0, HEIGHT}, (Vector) {WIDTH, HEIGHT});// 下
 
-	addWall((Vector) {0, HEIGHT/2.0}, (Vector) {WIDTH, HEIGHT/2.0});
-	// addWall((Vector) {0,  0}, (Vector) {WIDTH, HEIGHT});
+	// addWall((Vector) {0, HEIGHT/2.0}, (Vector) {WIDTH, HEIGHT/2.0});
+	addWall((Vector) {0,  0}, (Vector) {WIDTH, HEIGHT});
 
 	while(1){
-
-		// XDrawString(dpy, exit, gc, 4, 10,"Exit", 4);
 
 		if(XEventsQueued(dpy, QueuedAfterReading)){
 			XNextEvent(dpy, &event);
@@ -331,10 +363,6 @@ int main(int argc, char **argv) {
 						mouse.x = (float) event.xmotion.x;
 						mouse.y = (float) event.xmotion.y;
 						rotate_point(&mouse, start, PI);
-						// TODO: 最大の矢印を実装
-						// if(sqrt(pow(mouse.x - start.x, 2) + pow(mouse.y - start.y, 2)) >= 100) {
-						// 	continue;
-						// }
 					}
 				break;
 				case ButtonPress:
@@ -365,7 +393,7 @@ int main(int argc, char **argv) {
 						rotate_point(&end, start, PI);
 						placed_balls[last].v.x = (end.x - start.x) / placed_balls[last].mass;
 						placed_balls[last].v.y = (end.y - start.y) / placed_balls[last].mass;
-						placed_balls[last].r_speed = placed_balls[last].v.x / 80; // RANDOM 100
+						placed_balls[last].r_speed = placed_balls[last].v.x / R_C;
 						placed_balls[last].a.y = g;
 						mouse.x = -1;
 					}
@@ -375,7 +403,7 @@ int main(int argc, char **argv) {
 			}
 		} else {
 
-			usleep(5000);
+			usleep(SLEEP_TIME);
 			XClearWindow(dpy, w);
 
 			for(int i = 0; i < MAX; ++i) {
@@ -391,7 +419,7 @@ int main(int argc, char **argv) {
 				ball->rad -= ball->r_speed * (float)t;
 				while(ball->rad > 2*PI) ball->rad -= (float) (2*PI);
 				reflect(before, ball);
-				ball->r_speed = ball->v.x / 80;
+				ball->r_speed = ball->v.x / R_C;
 
 			}
 
