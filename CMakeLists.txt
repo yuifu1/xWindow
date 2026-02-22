@@ -6,6 +6,7 @@ find_package(X11 REQUIRED)
 
 add_executable(xWindow
         main.c
+        nishigori.c
 )
 
 # Link X11 and math libraries
