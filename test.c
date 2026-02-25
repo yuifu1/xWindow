@@ -56,7 +56,6 @@ Vector normalize(const Vector v) {
 	return (Vector){v.x / l, v.y / l};
 }
 
-// 追加: ベクトル基本
 Vector add(const Vector a, const Vector b){ return (Vector) {a.x+b.x, a.y+b.y}; }
 Vector sub(const Vector a, const Vector b){ return (Vector) {a.x-b.x, a.y-b.y}; }
 Vector mul(const Vector a, const float s) { return (Vector) {a.x*s, a.y*s}; }
@@ -215,7 +214,6 @@ void DrawBalls(Display* dpy, const Window w, GC gc) {
 		DrawBall(dpy, w, gc, placed_balls + i);
 }
 
-// reflect() を「最近点」方式に差し替え
 void reflect(const Ball before, Ball* after) {
 
 	for(int i = 0; i < WALL_MAX; ++i) {
