@@ -229,8 +229,9 @@ void reflect_wall(Ball* ball) {
 
 		const float vn = dot(ball->v, n);
 		if(vn < 0) {
-			ball->v.x -= (float)(1 + e) * vn * n.x;
-			ball->v.y -= (float)(1 + e) * vn * n.y;
+			ball->v = sub(ball->v, mul(n, (float)(1 + e) * vn));
+			// ball->v.x -= (float)(1 + e) * vn * n.x;
+			// ball->v.y -= (float)(1 + e) * vn * n.y;
 		}
 	}
 }
@@ -246,16 +247,12 @@ static void reflect_ball(Ball* a, Ball* b) {
 	a->center = add(a->center, mul(n, -error * 1 / 2));
 	b->center = add(b->center, mul(n, error * 1 / 2));
 
-	const Vector rel = sub(b->v, a->v); // 速度AB
+	const Vector rel = sub(b->v, a->v);
 	const float vn = dot(rel, n); // 速度
 	if(vn > 0) return;
-	const float ma = 1 / a->mass;
-	const float mb = 1 / b->mass;
-	const float denom = ma + mb;
-	const float j = (float)-(1 + e) * vn / denom;
-	const Vector impulse = mul(n, j);
-	a->v = sub(a->v, mul(impulse, ma));
-	b->v = add(b->v, mul(impulse, mb));
+	const float j = (float)-(1 + e) * vn * 1/2;
+	a->v = sub(a->v, mul(n, j));
+	b->v = add(b->v, mul(n, j));
 }
 
 void makeWindow() {
