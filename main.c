@@ -11,7 +11,7 @@
 #define R 30 // ボールの半径 [px]
 #define BALL_MAX 10 // ボールの最大数
 #define WALL_MAX 10 // 壁の最大数
-#define MAX_SPEED 300 // 最大速度 [px/s]
+#define MAX_SPEED 200 // 最大速度 [px/s]
 // ----------------------
 
 #include <stdio.h>
@@ -47,15 +47,15 @@ typedef struct {
 } Vector;
 
 Vector sub(const Vector a, const Vector b) {
-	return (Vector) {a.x-b.x, a.y-b.y};
+	return (Vector){a.x - b.x, a.y - b.y};
 }
 
 Vector add(const Vector a, const Vector b) {
-	return (Vector) {a.x+b.x, a.y+b.y};
+	return (Vector){a.x + b.x, a.y + b.y};
 }
 
 Vector mul(const Vector a, const float k) {
-	return (Vector) {a.x * k, a.y * k};
+	return (Vector){a.x * k, a.y * k};
 }
 
 float length(const Vector v) {
@@ -72,14 +72,13 @@ float cross(const Vector a, const Vector b) {
 
 Vector normalize(const Vector a) {
 	const float l = length(a);
-	if(l == 0) return (Vector) {0, 0};
+	if(l == 0) return (Vector){0, 0};
 	return (Vector){a.x / l, a.y / l};
 }
 
 typedef struct {
 	Vector pos1;
 	Vector pos2;
-	Vector d;
 } Wall;
 
 typedef struct {
@@ -98,7 +97,8 @@ Ball placed_balls[BALL_MAX];
 int wall_last = 0;
 Wall placed_walls[WALL_MAX];
 
-Ball* addBall(const Vector center, const Vector v, const Vector a, const float r_speed, const float r, const float rad, const float mass) {
+Ball* addBall(const Vector center, const Vector v, const Vector a, const float r_speed, const float r, const float rad,
+              const float mass) {
 	const Ball ball = {center, v, a, r_speed, r, rad, mass};
 	if(++ball_last >= BALL_MAX) ball_last = 0;
 	placed_balls[ball_last] = ball;
@@ -111,9 +111,8 @@ Wall* addWall(Vector pos1, Vector pos2) {
 		pos1 = pos2;
 		pos2 = temp;
 	}
-	const Vector d = sub(pos2, pos1);
-	const Wall w = {pos1, pos2, d};
-	printf("Wall generated:\n\td(%f, %f)\n", d.x, d.y);
+	const Wall w = {pos1, pos2};
+	printf("Wall generated:\n\t(%f, %f) (%f, %f)\n", pos1.x, pos1.y, pos2.x, pos2.y);
 	if(++wall_last >= WALL_MAX) wall_last = 0;
 	placed_walls[wall_last] = w;
 	return placed_walls + wall_last;
@@ -121,7 +120,7 @@ Wall* addWall(Vector pos1, Vector pos2) {
 
 void rotate_point(Vector* p, const Vector center, const float rad) {
 	const float dx = p->x - center.x,
-				dy = p->y - center.y;
+	            dy = p->y - center.y;
 	p->x = dx * cosf(rad) - dy * -sinf(rad) + center.x;
 	p->y = dx * -sinf(rad) + dy * cosf(rad) + center.y;
 }
@@ -131,7 +130,8 @@ void DrawBall(Display* dpy, const Window w, GC gc, Ball* ball) {
 	const float dr = ball->r * 2; // 直径
 	const Vector pos = {ball->center.x - (ball->r), ball->center.y - (ball->r)};
 	float deg = (float)((180 * ball->rad) / PI);
-	while(deg > 360) deg -= 360; while(deg < 0) deg += 360;
+	while(deg > 360) deg -= 360;
+	while(deg < 0) deg += 360;
 
 	XSetForeground(dpy, gc, red);
 	XFillArc(dpy, w, gc, (int)pos.x, (int)pos.y, (int)dr, (int)dr, (int)(deg * 64.0), 180 * 64);
@@ -139,7 +139,8 @@ void DrawBall(Display* dpy, const Window w, GC gc, Ball* ball) {
 	XSetForeground(dpy, gc, gray);
 
 	float round = 180 + deg;
-	while(round > 360) round -= 360; while(round < 0) round += 360;
+	while(round > 360) round -= 360;
+	while(round < 0) round += 360;
 	XFillArc(dpy, w, gc, (int)pos.x, (int)pos.y, (int)dr, (int)dr, (int)(round * 64.0), 180 * 64);
 
 	XSetForeground(dpy, gc, black);
@@ -174,7 +175,8 @@ void DrawBall(Display* dpy, const Window w, GC gc, Ball* ball) {
 	// XSetForeground(dpy, gc, black); // 外接正角形
 	// XDrawRectangle(dpy, w, gc, (int)pos.x, (int)pos.y, (int)dr, (int)dr);
 
-	while(ball->rad > 2 * PI) ball->rad -= (float)(2 * PI); while(ball->rad < 0) ball->rad += (float)(2 * PI);
+	while(ball->rad > 2 * PI) ball->rad -= (float)(2 * PI);
+	while(ball->rad < 0) ball->rad += (float)(2 * PI);
 }
 
 void DrawWall(Display* dpy, const Window w, GC gc, const Wall* wall) {
@@ -195,6 +197,7 @@ void DrawBalls(Display* dpy, const Window w, GC gc) {
 
 Vector closest(const Vector A, const Vector B, const Vector P) {
 	const Vector AB = sub(B, A);
+	if(length(AB) == 0) return A; // == B
 	const Vector AP = sub(P, A);
 	const Vector BP = sub(P, B);
 	Vector c;
@@ -205,45 +208,32 @@ Vector closest(const Vector A, const Vector B, const Vector P) {
 	} else {
 		const float ab_ = length(AB);
 		const float norm = dot(AP, AB) / ab_;
-		c =  add(A, mul(mul(AB, norm), 1 / ab_));
+		c = add(A, mul(mul(AB, norm), 1 / ab_));
 	}
 	return c;
 }
 
-void reflect(const Ball before, Ball* after) {
+void reflect(Ball* ball) {
 	for(int i = 0; i < WALL_MAX; ++i) {
 		const Wall w = placed_walls[i];
 		if(w.pos1.x == -1) continue; // 設置されていない壁オブジェクト
-
-		const Vector p1 = closest(w.pos1, w.pos2, before.center);
-		const Vector p2 = closest(w.pos1, w.pos2, after->center);
-		const Vector d_after = sub(after->center, p2);
+		const Vector p2 = closest(w.pos1, w.pos2, ball->center);
+		printf("%f, %f\n", p2.x, p2.y);
+		const Vector d_after = sub(ball->center, p2);
 		const Vector n = normalize(d_after);
 		const float dist_after = length(d_after);
-		if(dist_after > after->r) {
-			const float l = cross(w.d, sub(before.center, w.pos1)),
-						m = cross(w.d, sub(after->center, w.pos1));
-			if(l * m >= 0) continue;
-		}
-		if(length(n) == 0) {
-			// 中心がちょうど最近点にある等で法線が作れない場合、壁の法線っぽいものを作る
-			// const Vector AB = sub(w.pos2, w.pos1);
-			// n = normalize((Vector){-AB.y, AB.x});
-			// if(n.x == 0.0f && n.y == 0.0f) continue;
-			printf("called\n");
-			continue;
-		}
 
-		const float error = after->r - dist_after;
-		// if(error > 0) {
-			after->center = add(after->center, mul(n, error));
-		// }
+		if(dist_after > ball->r) continue;
+		if(length(n) == 0) continue;
 
-		// 反射: 壁へ向かっているときだけ
-		const float vn = dot(after->v, n);
+		const float error = ball->r - dist_after;
+		if(error > 0)
+			ball->center = add(ball->center, mul(n, error));
+
+		const float vn = dot(ball->v, n);
 		if(vn < 0) {
-			after->v.x -= (float)(1.0f + e) * vn * n.x;
-			after->v.y -= (float)(1.0f + e) * vn * n.y;
+			ball->v.x -= (float)(1.0f + e) * vn * n.x;
+			ball->v.y -= (float)(1.0f + e) * vn * n.y;
 		}
 	}
 }
@@ -285,10 +275,10 @@ int main(int argc, char** argv) {
 	bool isWritingArrow = false,
 	     isWritingWall = false;
 
-	addWall((Vector){0, 0}, (Vector){WIDTH, 0}); // 上
+	// addWall((Vector){0, 0}, (Vector){WIDTH, 0}); // 上
 	// addWall((Vector){0, 0}, (Vector){0, HEIGHT}); // 左
 	// addWall((Vector){WIDTH, 0}, (Vector){WIDTH, HEIGHT}); // 右
-	addWall((Vector){0, HEIGHT}, (Vector){WIDTH, HEIGHT}); // 下
+	// addWall((Vector){0, HEIGHT}, (Vector){WIDTH, HEIGHT}); // 下
 
 	// addWall((Vector) {0, HEIGHT/2.0}, (Vector) {WIDTH, HEIGHT/2.0});
 	// addWall((Vector) {0,  0}, (Vector) {WIDTH, HEIGHT});
@@ -323,8 +313,8 @@ int main(int argc, char** argv) {
 								break;
 							case MOUSE_RIGHT:
 								if(isWritingArrow) continue;
-								start.x = (float) event.xbutton.x;
-								start.y = (float) event.xbutton.y;
+								start.x = (float)event.xbutton.x;
+								start.y = (float)event.xbutton.y;
 								isWritingWall = true;
 								break;
 							default:
@@ -350,7 +340,7 @@ int main(int argc, char** argv) {
 							case MOUSE_RIGHT:
 								if(isWritingWall) {
 									isWritingWall = false;
-									addWall(start, (Vector){(float) event.xbutton.x, (float) event.xbutton.y});
+									addWall(start, (Vector){(float)event.xbutton.x, (float)event.xbutton.y});
 								}
 								break;
 							case MOUSE_MIDDLE:
@@ -384,8 +374,6 @@ int main(int argc, char** argv) {
 			for(int i = 0; i < BALL_MAX; ++i) {
 				Ball* ball = placed_balls + i;
 				if(ball->r <= 0) continue;
-				const Ball before = *ball;
-
 				ball->v.x += ball->a.x * (float)t;
 				ball->v.y += ball->a.y * (float)t;
 				ball->center.x += ball->v.x * (float)t;
@@ -393,7 +381,7 @@ int main(int argc, char** argv) {
 				ball->rad -= ball->r_speed * (float)t;
 				while(ball->rad > 2 * PI) ball->rad -= (float)(2 * PI);
 				while(ball->rad < 0) ball->rad += (float)(2 * PI);
-				reflect(before, ball);
+				reflect(ball);
 				if(isfinite(ball->center.x) == false || isfinite(ball->center.y) == false) {
 					placed_balls[i] = (Ball){
 						// ボールを削除
@@ -428,7 +416,6 @@ int main(int argc, char** argv) {
 				}
 
 				ball->r_speed = ball->v.x / R_C;
-
 			}
 
 			DrawBalls(dpy, w, gc);
