@@ -5,10 +5,10 @@
 #define g 9.80665 // 重力加速度 [px/s^2]
 #define e 0.88 // 反発係数
 #define t 0.1 // 1ループでの経過時間 [s]
-#define MASS 5 // ボールの質量
 #define SLEEP_TIME 5000 // [μs]
 #define R_C 80 // 各速度の割合 (角速度 = v / R_C)
 #define R 30 // ボールの半径 [px]
+#define STOPPER 5
 #define BALL_MAX 10 // ボールの最大数
 #define WALL_MAX 10 // 壁の最大数
 #define MAX_SPEED 200 // 最大速度 [px/s]
@@ -88,7 +88,6 @@ typedef struct {
 	float r_speed; // 回転速度
 	float r; // 半径
 	float rad; // 角度
-	float mass; // 質量
 } Ball;
 
 int ball_last = 0;
@@ -97,9 +96,8 @@ Ball placed_balls[BALL_MAX];
 int wall_last = 0;
 Wall placed_walls[WALL_MAX];
 
-Ball* addBall(const Vector center, const Vector v, const Vector a, const float r_speed, const float r, const float rad,
-              const float mass) {
-	const Ball ball = {center, v, a, r_speed, r, rad, mass};
+Ball* addBall(const Vector center, const Vector v, const Vector a, const float r_speed, const float r, const float rad) {
+	const Ball ball = {center, v, a, r_speed, r, rad};
 	if(++ball_last >= BALL_MAX) ball_last = 0;
 	placed_balls[ball_last] = ball;
 	return placed_balls + ball_last;
@@ -331,7 +329,7 @@ int main(int argc, char** argv) {
 								start.y = (float)event.xbutton.y;
 								mouse.x = start.x;
 								mouse.y = start.y;
-								addBall(start, (Vector){0, 0}, (Vector){0, 0}, 0, R, 0, MASS);
+								addBall(start, (Vector){0, 0}, (Vector){0, 0}, 0, R, 0);
 								isWritingArrow = true;
 								break;
 							case MOUSE_RIGHT:
@@ -355,8 +353,8 @@ int main(int argc, char** argv) {
 									isWritingArrow = false;
 									Vector end = {(float)event.xbutton.x, (float)event.xbutton.y};
 									rotate_point(&end, start, PI);
-									placed_balls[ball_last].v.x = (end.x - start.x) / placed_balls[ball_last].mass;
-									placed_balls[ball_last].v.y = (end.y - start.y) / placed_balls[ball_last].mass;
+									placed_balls[ball_last].v.x = (end.x - start.x) / STOPPER;
+									placed_balls[ball_last].v.y = (end.y - start.y) / STOPPER;
 									placed_balls[ball_last].r_speed = placed_balls[ball_last].v.x / R_C;
 									placed_balls[ball_last].a.y = g;
 									mouse.x = -1;

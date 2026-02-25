@@ -5,9 +5,7 @@ project(xWindow C)
 find_package(X11 REQUIRED)
 
 add_executable(xWindow
-        main.c
-        nishigori.c
-        sakamoto.c
+        32_BallSweets.c
 )
 
 # Link X11 and math libraries
