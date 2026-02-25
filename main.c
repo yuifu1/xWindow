@@ -3,7 +3,7 @@
 #define WIDTH  700 // ウィンドウの幅 [px]
 #define HEIGHT 700 // ウィンドウの高さ [px]
 #define g 9.80665 // 重力加速度 [px/s^2]
-#define e 1.1 // 反発係数
+#define e 0.88 // 反発係数
 #define t 0.1 // 1ループでの経過時間 [s]
 #define MASS 5 // ボールの質量
 #define SLEEP_TIME 5000 // [μs]
@@ -213,12 +213,11 @@ Vector closest(const Vector A, const Vector B, const Vector P) {
 	return c;
 }
 
-void reflect(Ball* ball) {
+void reflect_wall(Ball* ball) {
 	for(int i = 0; i < WALL_MAX; ++i) {
 		const Wall w = placed_walls[i];
 		if(w.pos1.x == -1) continue; // 設置されていない壁オブジェクト
 		const Vector p2 = closest(w.pos1, w.pos2, ball->center);
-		printf("%f, %f\n", p2.x, p2.y);
 		const Vector d_after = sub(ball->center, p2);
 		const Vector n = normalize(d_after);
 		const float dist_after = length(d_after);
@@ -232,10 +231,40 @@ void reflect(Ball* ball) {
 
 		const float vn = dot(ball->v, n);
 		if(vn < 0) {
-			ball->v.x -= (float)(1.0f + e) * vn * n.x;
-			ball->v.y -= (float)(1.0f + e) * vn * n.y;
+			ball->v.x -= (float)(1 + e) * vn * n.x;
+			ball->v.y -= (float)(1 + e) * vn * n.y;
 		}
 	}
+}
+
+static void reflect_ball(Ball* a, Ball* b) {
+	if(a->r <= 0 || b->r <= 0) return;
+	const Vector AB = sub(b->center, a->center);
+	const float distance = length(AB);
+	if(distance > (a->r + b->r)) return;
+
+	const Vector n = normalize(AB); // 正規化
+	const float error = (a->r + b->r) - distance;
+	a->center = add(a->center, mul(n, -error * 1 / 2));
+	b->center = add(b->center, mul(n, error * 1 / 2));
+
+	const Vector rel = sub(b->v, a->v); // 速度AB
+	const float vn = dot(rel, n); // 速度
+	if(vn > 0) return;
+	const float ma = 1 / a->mass;
+	const float mb = 1 / b->mass;
+	const float denom = ma + mb;
+	const float j = (float)-(1 + e) * vn / denom;
+	const Vector impulse = mul(n, j);
+	a->v = sub(a->v, mul(impulse, ma));
+	b->v = add(b->v, mul(impulse, mb));
+}
+
+void makeWindow() {
+	addWall((Vector){0, 0}, (Vector){WIDTH, 0}); // 上
+	addWall((Vector){0, 0}, (Vector){0, HEIGHT}); // 左
+	addWall((Vector){WIDTH, 0}, (Vector){WIDTH, HEIGHT}); // 右
+	addWall((Vector){0, HEIGHT}, (Vector){WIDTH, HEIGHT}); // 下
 }
 
 int main(int argc, char** argv) {
@@ -275,13 +304,7 @@ int main(int argc, char** argv) {
 	bool isWritingArrow = false,
 	     isWritingWall = false;
 
-	// addWall((Vector){0, 0}, (Vector){WIDTH, 0}); // 上
-	// addWall((Vector){0, 0}, (Vector){0, HEIGHT}); // 左
-	// addWall((Vector){WIDTH, 0}, (Vector){WIDTH, HEIGHT}); // 右
-	// addWall((Vector){0, HEIGHT}, (Vector){WIDTH, HEIGHT}); // 下
-
-	// addWall((Vector) {0, HEIGHT/2.0}, (Vector) {WIDTH, HEIGHT/2.0});
-	// addWall((Vector) {0,  0}, (Vector) {WIDTH, HEIGHT});
+	makeWindow();
 
 	while(1) {
 		if(XEventsQueued(dpy, QueuedAfterReading)) {
@@ -315,6 +338,8 @@ int main(int argc, char** argv) {
 								if(isWritingArrow) continue;
 								start.x = (float)event.xbutton.x;
 								start.y = (float)event.xbutton.y;
+								mouse.x = start.x;
+								mouse.y = start.y;
 								isWritingWall = true;
 								break;
 							default:
@@ -358,6 +383,7 @@ int main(int argc, char** argv) {
 										(Vector){-1, -1}
 									};
 								} // init
+								makeWindow();
 								break;
 							default:
 								continue;
@@ -381,7 +407,7 @@ int main(int argc, char** argv) {
 				ball->rad -= ball->r_speed * (float)t;
 				while(ball->rad > 2 * PI) ball->rad -= (float)(2 * PI);
 				while(ball->rad < 0) ball->rad += (float)(2 * PI);
-				reflect(ball);
+				reflect_wall(ball);
 				if(isfinite(ball->center.x) == false || isfinite(ball->center.y) == false) {
 					placed_balls[i] = (Ball){
 						// ボールを削除
@@ -416,6 +442,12 @@ int main(int argc, char** argv) {
 				}
 
 				ball->r_speed = ball->v.x / R_C;
+			}
+
+			for(int i = 0; i < BALL_MAX; ++i) {
+				for(int j = i + 1; j < BALL_MAX; ++j) {
+					reflect_ball(placed_balls + i, placed_balls + j);
+				}
 			}
 
 			DrawBalls(dpy, w, gc);
