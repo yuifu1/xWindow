@@ -268,7 +268,7 @@ int main(int argc, char** argv) {
 			(Vector){-1, -1},
 			(Vector){-1, 1},
 			(Vector){-1, -1},
-			-1, -1, -1, -1
+			-1, -1, -1
 		};
 	} // init
 
@@ -369,7 +369,7 @@ int main(int argc, char** argv) {
 										(Vector){-1, -1},
 										(Vector){-1, 1},
 										(Vector){-1, -1},
-										-1, -1, -1, -1
+										-1, -1, -1
 									};
 								} // init
 								for(int i = 0; i < WALL_MAX; i++) {
@@ -409,7 +409,7 @@ int main(int argc, char** argv) {
 						(Vector){-1, -1},
 						(Vector){-1, 1},
 						(Vector){-1, -1},
-						-1, -1, -1, -1
+						-1, -1, -1
 					};
 					continue;
 				}
@@ -419,7 +419,7 @@ int main(int argc, char** argv) {
 						(Vector){-1, -1},
 						(Vector){-1, 1},
 						(Vector){-1, -1},
-						-1, -1, -1, -1
+						-1, -1, -1
 					}; // ボールを削除
 					continue;
 				}
